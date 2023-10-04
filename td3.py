@@ -2,13 +2,15 @@
 # Sami El Kateb
 # Theo Jeannes
 
-from gymnasium.utils.play import play
+import argparse
 import gymnasium as gym
 import os
+import sys
 from ale_py import ALEInterface
+from ale_py.roms import Pong
+from gymnasium.utils.play import play
 from keras.src.saving.saving_api import load_model
 from matplotlib.pyplot import Enum, np
-from ale_py.roms import Pong
 
 
 class PongActions(Enum):
@@ -202,8 +204,27 @@ def play_model(name_model):
 if __name__ == "__main__":
     ale = ALEInterface()
     ale.loadROM(Pong)
-    # register_inputs()
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir, 'models', 'pong.h5')
 
-    play_model(model_path)
+    parser = argparse.ArgumentParser(description="Run Reinforcement Learning Pong Game")
+    parser.add_argument(
+        "mode",
+        metavar="mode",
+        type=str,
+        choices=["play", "watch"],
+        help="""
+        The mode of the python script. The play mode is for generating data to train the agent.
+        The watch mode is for watching the agent play
+        """,
+    )
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    args = parser.parse_args()
+
+    print(f"Starting the script in {args.mode} mode ...")
+    if args.mode == "watch":
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(current_dir, 'models', 'pong.h5')
+        play_model(model_path)
+    else:
+        register_inputs()
