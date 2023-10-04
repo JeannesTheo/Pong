@@ -179,19 +179,19 @@ def play_model(name_model):
         if state is None or state_before is None:
             action = env.action_space.sample()
             state = state_before
-            (state_before, reward, terminated, *rest) = env.step(action)
+            state_before, *_ = env.step(action)
             state_before = (Observation.__crop__(state_before)).reshape(-1, 40, 51, 1)
             continue
 
-        state = state - state_before
+        state[0][:, -1] = 0
+        state = state_before - state
 
-        action = model.predict(state)
+        action = model.predict(state, verbose=False)
         action = np.argmax(action)
-        print(action)
         action = PongActions.from_categorical_index(action)
 
         state = state_before
-        (state_before, reward, terminated, *rest) = env.step(action)
+        state_before, *_ = env.step(action)
         state_before = (Observation.__crop__(state_before)).reshape(-1, 40, 51, 1)
 
 
