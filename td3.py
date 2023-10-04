@@ -4,6 +4,7 @@
 
 from gymnasium.utils.play import play
 import gymnasium as gym
+import os
 from ale_py import ALEInterface
 from keras.src.saving.saving_api import load_model
 from matplotlib.pyplot import Enum, np
@@ -202,4 +203,7 @@ if __name__ == "__main__":
     ale = ALEInterface()
     ale.loadROM(Pong)
     # register_inputs()
-    play_model("./models/pong.h5")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, 'models', 'pong.h5')
+
+    play_model(model_path)
