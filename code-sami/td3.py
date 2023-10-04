@@ -1,12 +1,8 @@
-from random import random
-
+from gymnasium.utils.play import play
 import gymnasium as gym
 from ale_py import ALEInterface
-from gymnasium.utils.play import play
+from keras.src.saving.saving_api import load_model
 from matplotlib.pyplot import Enum, np
-
-ale = ALEInterface()
-
 from ale_py.roms import Pong
 
 
