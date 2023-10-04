@@ -184,8 +184,11 @@ def play_model(name_model):
         state_before = (Observation.__crop__(state_before)).reshape(-1, 40, 51, 1)
 
 
+# register_inputs() permet d'ajouter des données pour permettre a l'agent de s'entrainer. Une fois l'entrainement
+# fait, grace au Jupiter notebook, on peut fournir le modèle entrainé, qui sert d'oracle à l'agent, en utilisant
+# play_model. Le parametre correspond au chemin vers le modèle
 if __name__ == "__main__":
     ale = ALEInterface()
     ale.loadROM(Pong)
-    register_inputs()
-    # play_model("./models/pong-6.h5")
+    # register_inputs()
+    play_model("./models/pong-6.h5")
