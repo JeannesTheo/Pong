@@ -1,8 +1,12 @@
-from gymnasium.utils.play import play
+from random import random
+
 import gymnasium as gym
 from ale_py import ALEInterface
-from keras.src.saving.saving_api import load_model
+from gymnasium.utils.play import play
 from matplotlib.pyplot import Enum, np
+
+ale = ALEInterface()
+
 from ale_py.roms import Pong
 
 
@@ -72,10 +76,10 @@ class Observation:
 
     def add_action(self, action):
         # if action == 0:
-            # print("action 0")
+        # print("action 0")
         self.action = [PongActions(action).to_categorical_index()]
         # if self.action[0] == 0:
-            # print("self action 0")
+        # print("self action 0")
 
     def is_ball_going_towards_enemy(self):
         return self.ball_t[1] > self.ball_tp1[1]
@@ -178,7 +182,16 @@ def callback(obs_t, obs_tp1, action, reward, *_):
 #     pass
 
 ale.loadROM(Pong)
-env = gym.make("ALE/Pong-v5", render_mode="rgb_array")
+env = gym.make(
+    "ALE/Pong-v5",
+    render_mode="rgb_array",
+)
 env.reset()
-play(env, zoom=3, fps=12, callback=callback)
+play(
+    env,
+    zoom=3,
+    fps=12,
+    callback=callback,
+    # keys_to_action={"z": 2, "d": 3, "k": 2, "j": 3},
+)
 env.close()
