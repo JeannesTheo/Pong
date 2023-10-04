@@ -93,7 +93,7 @@ class Observation:
         with open(DIFF_PATH, "a") as outfile_X:
             state_before_copy = self.obs.copy()
             state_before_copy[:, -1] = 0
-            diff = self.obs_tp1 - self.obs
+            diff = self.obs_tp1 - state_before_copy
 
             np.savetxt(outfile_X, delimiter=",", X=[diff.flatten()], fmt="%d")
         with open(X_PATH, "a") as outfile_X:
