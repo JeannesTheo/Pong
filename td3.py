@@ -93,7 +93,6 @@ class GameObservations:
         self.observations = []
         self.ball_directed_toward_enemy = True
         self.should_save = False
-        self.shouldSkipFrame = False
 
     # Cette méthode permet l'ajout d'observations à la liste des observations,
     # ainsi que leur sauvegarde si les conditions nécessaires sont réunies.
@@ -101,14 +100,12 @@ class GameObservations:
         if reward < 0:  # Si on perd la balle, on supprime les observations courantes,
             # puisque qu'on ne veut pas apprendre à perdre
             self.observations = []
-            self.shouldSkipFrame = True
             return
 
         if reward > 0:  # Si on gagne un point, on sauvegarde les observations, puis on remet a zero la liste
             for obs in self.observations:
                 obs.save()
             self.observations = []
-            self.shouldSkipFrame = True
             return
         # On cree l'observation, qui est la difference entre l'etat actuel et l'etat suivant, et on l'ajoute a la
         # liste des observations
@@ -127,9 +124,6 @@ class GameObservations:
         if observation.is_ball_going_towards_enemy and not self.ball_directed_toward_enemy:  # Si la balle va vers l'ennemi,
             # on sauvegarde les observations, puis on remet a zero la liste
             self.ball_directed_toward_enemy = True
-            if self.shouldSkipFrame:
-                self.shouldSkipFrame = False
-                self.observations = []
             for obs in self.observations:
                 obs.save()
             self.observations = []
@@ -157,7 +151,6 @@ def register_inputs():
 def play_model(name_model):
     env = gym.make("ALE/Pong-v5", render_mode="human")
     model = load_model(name_model)
-    print("loaded")
     state_before = env.reset()[0]
     state_before = Observation.__crop__(state_before).reshape(-1, 40, 51, 1)
     state = None
