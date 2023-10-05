@@ -19,33 +19,30 @@ class PongActions(Enum):
     DOWN = 3
 
     @staticmethod
-    def from_categorical_index(num):
+    def from_sparse_categorical(num):
         if num == 0:
             return PongActions.NO_ACTION.value
         if num == 1:
             return PongActions.UP.value
         if num == 2:
             return PongActions.DOWN.value
-        return -1
+        raise ValueError("Invalid Pong Action Category")
 
-    def to_categorical_index(self):
+    def to_sparse_categorical(self):
         if self == PongActions.NO_ACTION:
             return 0
         if self == PongActions.UP:
             return 1
         if self == PongActions.DOWN:
             return 2
-        return -1
+        raise ValueError("Invalid Pong Action Category")
 
 
-OBS_PATH = "data/obs.csv"
-DIFF_PATH = "data/diff.csv"
 X_PATH = "data/X.csv"
-X_COORD_PATH = "data/X_coord.csv"
 Y_PATH = "data/y.csv"
 L_PLAYER_POS = 0
 R_PLAYER_POS = 50
-UNK_POSITION = np.array([255, 255])
+UNK_POSITION = np.array([-1, -1])
 
 
 class Observation:
@@ -69,26 +66,22 @@ class Observation:
         self.data = np.array([self.ball_t, self.ball_tp1, right_player])
 
     def add_action(self, action):
-        self.action = [PongActions(action).to_categorical_index()]
+        self.action = [PongActions(action).to_sparse_categorical()]
 
     def is_ball_going_towards_enemy(self):
         return self.ball_t[1] > self.ball_tp1[1]
 
     def is_ball_on_field(self):
-        return self.ball_t[1] != 255 or self.ball_tp1[1] != 255
+        return self.ball_t[1] != -1 or self.ball_tp1[1] != -1
 
     def save(self):
-        with open(OBS_PATH, "a") as outfile_X:
-            np.savetxt(outfile_X, delimiter=",", X=[self.obs.flatten()], fmt="%d")
-        with open(DIFF_PATH, "a") as outfile_X: # On sauvegarde la difference entre l'etat actuel et l'etat suivant
+        with open(X_PATH, "a") as outfile_X: # On sauvegarde la difference entre l'etat actuel et l'etat suivant
             # pour avoir une indication sur la direction de la balle lors de la prediction
             state_before_copy = self.obs.copy()
             state_before_copy[:, -1] = 0 # Si la raquette ne bouge pas, elle risque de disparaitre de l'observation
             # On met donc a zero la colonne correspondant a la raquette dans l'etat actuel pour eliminer ce probleme
             diff = self.obs_tp1 - state_before_copy
             np.savetxt(outfile_X, delimiter=",", X=[diff.flatten()], fmt="%d")
-        with open(X_PATH, "a") as outfile_X:
-            np.savetxt(outfile_X, delimiter=",", X=[self.data.flatten()], fmt="%d")
         with open(Y_PATH, "a") as outfile_Y:
             np.savetxt(outfile_Y, delimiter=",", X=self.action, fmt="%d")
 
@@ -191,7 +184,7 @@ def play_model(name_model):
 
         action = model.predict(state, verbose=False)
         action = np.argmax(action)
-        action = PongActions.from_categorical_index(action)
+        action = PongActions.from_sparse_categorical(action)
 
         state = state_before
         state_before, *_ = env.step(action)
@@ -202,10 +195,10 @@ def play_model(name_model):
 # fait, grace au Jupiter notebook, on peut fournir le modèle entrainé, qui sert d'oracle à l'agent, en utilisant
 # play_model. Le parametre correspond au chemin vers le modèle
 if __name__ == "__main__":
-    ale = ALEInterface()
-    ale.loadROM(Pong)
-
-    parser = argparse.ArgumentParser(description="Run Reinforcement Learning Pong Game")
+    parser = argparse.ArgumentParser(
+        description="""Pong Game played by a Reinforcement Learning Agent.
+                       Auteurs: EL KATEB Sami, JEANNES Theo"""
+    )
     parser.add_argument(
         "mode",
         metavar="mode",
@@ -219,7 +212,11 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
+
     args = parser.parse_args()
+
+    ale = ALEInterface()
+    ale.loadROM(Pong)
 
     print(f"Starting the script in {args.mode} mode ...")
     if args.mode == "watch":
