@@ -143,10 +143,7 @@ class GameObservations:
         # Cela permet de limiter le nombre d'etats ou notre raquette ne bouge pas
         if observation.is_ball_going_towards_enemy and not self.ball_directed_toward_enemy:  # Si la balle va vers l'ennemi,
             # on sauvegarde les observations, puis on remet a zero la liste
-            self.going_to_enemy = True
-            if self.shouldSkipFrame:
-                self.shouldSkipFrame = False
-                self.observations = []
+            self.ball_directed_toward_enemy = True
             for obs in self.observations:
                 obs.save()
             self.observations = []
