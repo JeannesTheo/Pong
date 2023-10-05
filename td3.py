@@ -11,13 +11,15 @@ from ale_py import ALEInterface
 from ale_py.roms import Pong
 from gymnasium.utils.play import play
 from keras.src.saving.saving_api import load_model
+from joblib import load
 from matplotlib.pyplot import Enum, np
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(CURRENT_DIR, 'data')
 X_PATH = os.path.join(DATA_PATH, 'X.csv')
 Y_PATH = os.path.join(DATA_PATH, 'y.csv')
-MODEL_PATH = os.path.join(CURRENT_DIR, 'models', 'pong.h5')
+NEURAL_NET_PATH = os.path.join(CURRENT_DIR, 'models', 'pong-smoteen.h5')
+RANDOM_FOREST_PATH = os.path.join(CURRENT_DIR, 'models', 'pong-random-forest.joblib')
 DEBUG_PATH = os.path.join(CURRENT_DIR, 'debug')
 IS_DEBUG = False
 
@@ -167,9 +169,9 @@ def register_inputs():
     env.close()
 
 
-def play_model(name_model):
+def play_neural_net():
     env = gym.make("ALE/Pong-v5", render_mode="human")
-    model = load_model(name_model)
+    model = load_model(NEURAL_NET_PATH)
     state_before = env.reset()[0]
     state_before = Observation.preprocess_obs(state_before)
     state = None
@@ -197,6 +199,35 @@ def play_model(name_model):
         state_before = Observation.preprocess_obs(state_before)
 
 
+def play_random_forest():
+    env = gym.make("ALE/Pong-v5", render_mode="human")
+    model = load(RANDOM_FOREST_PATH)
+    state_before = env.reset()[0]
+    state_before = Observation.preprocess_obs(state_before)
+    state = None
+    env.render()
+    while True:
+        if state is None or state_before is None:
+            action = env.action_space.sample()
+            state = state_before
+            state_before, *_ = env.step(action)
+            state_before = Observation.preprocess_obs(state_before)
+            continue
+
+        state[0][:, -1] = 0
+        state = state_before - state
+
+        if IS_DEBUG:
+            Observation.save_debug(state)
+
+        action = model.predict(state.reshape(-1, 40 * 51))
+        action = PongActions.from_sparse_categorical(action)
+
+        state = state_before
+        state_before, *_ = env.step(action)
+        state_before = Observation.preprocess_obs(state_before)
+
+
 # register_inputs() permet d'ajouter des données pour permettre a l'agent de s'entrainer. Une fois l'entrainement
 # fait, grace au Jupiter notebook, on peut fournir le modèle entrainé, qui sert d'oracle à l'agent, en utilisant
 # play_model. Le parametre correspond au chemin vers le modèle
@@ -211,11 +242,14 @@ if __name__ == "__main__":
         type=str,
         choices=["play", "watch"],
         help="""
+        Accepted values: play | watch.
         The mode of the python script.
         The play mode is for generating data to train the agent.
         The watch mode is for watching the agent play.
         """,
     )
+    parser.add_argument('--agent', type=str, default="neural_net", choices=["neural_net", "random_forest"],
+                        help="""The algorithm that train the model that the agent will use""")
     parser.add_argument('--debug', action='store_true', help="Will create images of the observation state in the debug folder.")
 
     if len(sys.argv) == 1:
@@ -227,16 +261,19 @@ if __name__ == "__main__":
     ale = ALEInterface()
     ale.loadROM(Pong)
 
-    print(f"Starting the script in {args.mode} mode ...")
-
     IS_DEBUG = args.debug
     if IS_DEBUG:
         os.makedirs(DEBUG_PATH, exist_ok=True)
 
     if args.mode == "watch":
+        print(f"Starting the script in {args.mode} mode with {args.agent} agent ...")
         # Les modeles ont beau avoir des prédictions correctes, l'agent ne joue pas correctement et a tendance a se bloquer dans un coin selon les configurations.
         # Augmenter le nombre de données d'entrainement pourrait ameliorer le problème, puisque cela permettrait d'entrainer le modele sur plus de situations
-        play_model(MODEL_PATH)
+        if args.agent == "random_forest":
+            play_random_forest()
+        else:
+            play_neural_net()
     else:
+        print(f"Starting the script in {args.mode} mode ...")
         os.makedirs(DATA_PATH, exist_ok=True)
         register_inputs()
