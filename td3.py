@@ -51,68 +51,59 @@ class Observation:
         self.action = None
         self.obs = Observation.__crop__(obs_t) # On decoupe l'image pour ne garder que la partie interessante,
         self.obs_tp1 = Observation.__crop__(obs_tp1) # en noir et blanc pour reduire les dimensions
-        obs_t_preprocessed = Observation.__preprocess__(obs_t)
-        right_player_index = (np.where(obs_t_preprocessed[:, 1] == R_PLAYER_POS))[0][0]
-        right_player = obs_t_preprocessed[right_player_index]
-        ball_t = obs_t_preprocessed[right_player_index - 1]
-        self.ball_t = (ball_t if ball_t[1] != L_PLAYER_POS and ball_t[1] != R_PLAYER_POS else UNK_POSITION)
 
-        obs_tp1_preprocessed = Observation.__preprocess__(obs_tp1)
-        right_player_index = (np.where(obs_tp1_preprocessed[:, 1] == R_PLAYER_POS))[0][0]
-        ball_tp1 = obs_tp1_preprocessed[right_player_index - 1]
-        self.ball_tp1 = (ball_tp1 if ball_tp1[1] != L_PLAYER_POS and ball_tp1[1] != R_PLAYER_POS else UNK_POSITION)
-        # On identifie la balle et l'agent sur l'image, ce qui permet de faire des choix pour connaitre les images que
-        # l'on veut sauvegarder
-        self.data = np.array([self.ball_t, self.ball_tp1, right_player])
+        # On identifie la position de la balle sur l'image,
+        # ce qui permet de choisir les images que l'on souhaite sauvegarder
+        obs_t_ball_only = self.obs.copy()[:, :-1]
+        ball_t = np.argwhere(obs_t_ball_only == 1)
+        obs_tp1_ball_only = self.obs_tp1.copy()[:, :-1]
+        ball_tp1 = np.argwhere(obs_tp1_ball_only == 1)
+
+        self.is_ball_on_field = len(ball_t) > 0 or len(ball_tp1) > 0
+
+        if len(ball_t) > 0 and len(ball_tp1) > 0:
+            self.is_ball_going_towards_enemy = ball_t[0][1] > ball_tp1[0][1]
+        else:
+            self.is_ball_going_towards_enemy = False
 
     def add_action(self, action):
         self.action = [PongActions(action).to_sparse_categorical()]
-
-    def is_ball_going_towards_enemy(self):
-        return self.ball_t[1] > self.ball_tp1[1]
-
-    def is_ball_on_field(self):
-        return self.ball_t[1] != -1 or self.ball_tp1[1] != -1
 
     def save(self):
         with open(X_PATH, "a") as outfile_X: # On sauvegarde la difference entre l'etat actuel et l'etat suivant
             # pour avoir une indication sur la direction de la balle lors de la prediction
             state_before_copy = self.obs.copy()
-            state_before_copy[:, -1] = 0 # Si la raquette ne bouge pas, elle risque de disparaitre de l'observation
-            # On met donc a zero la colonne correspondant a la raquette dans l'etat actuel pour eliminer ce probleme
+            state_before_copy[:, -1] = 0  # Si la raquette ne bouge pas, la soustraction
+            # des deux images la ferait disparaitre de l'observation
+            # On met donc a zero la colonne correspondant a la raquette dans l'état actuel pour corriger ce problème
             diff = self.obs_tp1 - state_before_copy
             np.savetxt(outfile_X, delimiter=",", X=[diff.flatten()], fmt="%d")
         with open(Y_PATH, "a") as outfile_Y:
             np.savetxt(outfile_Y, delimiter=",", X=self.action, fmt="%d")
 
     @staticmethod
-    def __preprocess__(obs):
-        cropped = Observation.__crop__(obs)
-        elements = np.argwhere(cropped == 1)
-        return np.array(sorted(elements, key=lambda x: x[1]))
-
-    @staticmethod
     def __crop__(obs):
-        # On coupe l'image pour ne garder que la partie intéressante du jeu, sans le score, la raquette de l'ennemi,
-        # et les bandes sur les cotés de l'écran
+        # On coupe l'image pour ne garder que la partie intéressante du jeu,
+        # sans le score, la raquette de l'ennemi et les bandes sur les cotés de l'écran
         return ((obs[34:194:4, 40:142:2, 2] > 50).astype(np.uint8)).astype(float)
 
 
 class GameObservations:
     def __init__(self):
         self.observations = []
-        self.going_to_enemy = True
+        self.ball_directed_toward_enemy = True
         self.should_save = False
         self.shouldSkipFrame = False
 
-    # Cette methode permet d'ajotuer une observation à la liste des observations,
-    # et de les sauvegarder pour alimenter le jeu de données
+    # Cette méthode permet l'ajout d'observations à la liste des observations,
+    # ainsi que leur sauvegarde si les conditions nécessaires sont réunies.
     def add_observation(self, obs_t, obs_tp1, action, reward):
         if reward < 0:  # Si on perd la balle, on supprime les observations courantes,
             # puisque qu'on ne veut pas apprendre à perdre
             self.observations = []
             self.shouldSkipFrame = True
             return
+
         if reward > 0:  # Si on gagne un point, on sauvegarde les observations, puis on remet a zero la liste
             for obs in self.observations:
                 obs.save()
@@ -125,7 +116,7 @@ class GameObservations:
         observation.add_action(
             action)  # Si la balle n'est pas affichée (notamment lorsqu'elle reapparait apres un point), on ne garde
         # pas l'observation
-        if not observation.is_ball_on_field():
+        if not observation.is_ball_on_field:
             return
 
         self.observations.append(observation)
@@ -133,18 +124,18 @@ class GameObservations:
         # On sauvegarde les observations de la balle arrivant de notre coté lorsque la balle repart vers l'ennemi,
         # et on supprime les observations de la balle qui part vers l'ennemi lorsque la balle vient vers nous
         # Cela permet de limiter le nombre d'etats ou notre raquette ne bouge pas
-        if observation.is_ball_going_towards_enemy() and not self.going_to_enemy:  # Si la balle va vers l'ennemi,
+        if observation.is_ball_going_towards_enemy and not self.ball_directed_toward_enemy:  # Si la balle va vers l'ennemi,
             # on sauvegarde les observations, puis on remet a zero la liste
-            self.going_to_enemy = True
+            self.ball_directed_toward_enemy = True
             if self.shouldSkipFrame:
                 self.shouldSkipFrame = False
                 self.observations = []
             for obs in self.observations:
                 obs.save()
             self.observations = []
-        elif not observation.is_ball_going_towards_enemy() and self.going_to_enemy:  # Si la balle va vers nous, on
+        elif not observation.is_ball_going_towards_enemy and self.ball_directed_toward_enemy:  # Si la balle va vers nous, on
             # supprime les observations, puis on remet a zero la liste
-            self.going_to_enemy = False
+            self.ball_directed_toward_enemy = False
             self.observations = []
 
 
