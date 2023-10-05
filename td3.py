@@ -6,11 +6,20 @@ import argparse
 import gymnasium as gym
 import os
 import sys
+import cv2
 from ale_py import ALEInterface
 from ale_py.roms import Pong
 from gymnasium.utils.play import play
 from keras.src.saving.saving_api import load_model
 from matplotlib.pyplot import Enum, np
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(CURRENT_DIR, 'data')
+X_PATH = os.path.join(DATA_PATH, 'X.csv')
+Y_PATH = os.path.join(DATA_PATH, 'y.csv')
+MODEL_PATH = os.path.join(CURRENT_DIR, 'models', 'pong.h5')
+DEBUG_PATH = os.path.join(CURRENT_DIR, 'debug')
+IS_DEBUG = False
 
 
 class PongActions(Enum):
@@ -36,13 +45,6 @@ class PongActions(Enum):
         if self == PongActions.DOWN:
             return 2
         raise ValueError("Invalid Pong Action Category")
-
-
-X_PATH = "data/X.csv"
-Y_PATH = "data/y.csv"
-L_PLAYER_POS = 0
-R_PLAYER_POS = 50
-UNK_POSITION = np.array([-1, -1])
 
 
 class Observation:
@@ -78,6 +80,8 @@ class Observation:
             # On met donc a zero la colonne correspondant a la raquette dans l'état actuel pour corriger ce problème
             diff = self.obs_tp1 - state_before_copy
             np.savetxt(outfile_X, delimiter=",", X=[diff.flatten()], fmt="%d")
+            if IS_DEBUG:
+                Observation.save_debug(diff)
         with open(Y_PATH, "a") as outfile_Y:
             np.savetxt(outfile_Y, delimiter=",", X=self.action, fmt="%d")
 
@@ -86,6 +90,22 @@ class Observation:
         # On coupe l'image pour ne garder que la partie intéressante du jeu,
         # sans le score, la raquette de l'ennemi et les bandes sur les cotés de l'écran
         return ((obs[34:194:4, 40:142:2, 2] > 50).astype(np.uint8)).astype(float)
+
+    debug_image_nb = 0
+
+    @staticmethod
+    def save_debug(input_obs):
+        obs = input_obs if len(input_obs.shape) == 2 else input_obs[0, :, :, 0]
+        rgb_image = np.zeros((obs.shape[0], obs.shape[1], 3), dtype=np.uint8)
+        rgb_image[obs == -1, 0] = 255
+        rgb_image[obs == 1, 2] = 255
+        filename = os.path.join(DEBUG_PATH, f'image_{Observation.debug_image_nb}.png')
+        cv2.imwrite(filename, rgb_image)
+        Observation.debug_image_nb += 1
+
+    @staticmethod
+    def preprocess_obs(obs):
+        return (Observation.__crop__(obs)).reshape(-1, 40, 51, 1)
 
 
 class GameObservations:
@@ -134,7 +154,6 @@ class GameObservations:
 
 
 def register_inputs():
-    global game_observations
     game_observations = GameObservations()
 
     def callback(obs_t, obs_tp1, action, reward, *_):
@@ -152,7 +171,7 @@ def play_model(name_model):
     env = gym.make("ALE/Pong-v5", render_mode="human")
     model = load_model(name_model)
     state_before = env.reset()[0]
-    state_before = Observation.__crop__(state_before).reshape(-1, 40, 51, 1)
+    state_before = Observation.preprocess_obs(state_before)
     state = None
     env.render()
     while True:
@@ -160,11 +179,14 @@ def play_model(name_model):
             action = env.action_space.sample()
             state = state_before
             state_before, *_ = env.step(action)
-            state_before = (Observation.__crop__(state_before)).reshape(-1, 40, 51, 1)
+            state_before = Observation.preprocess_obs(state_before)
             continue
 
         state[0][:, -1] = 0
         state = state_before - state
+
+        if IS_DEBUG:
+            Observation.save_debug(state)
 
         action = model.predict(state, verbose=False)
         action = np.argmax(action)
@@ -172,7 +194,7 @@ def play_model(name_model):
 
         state = state_before
         state_before, *_ = env.step(action)
-        state_before = (Observation.__crop__(state_before)).reshape(-1, 40, 51, 1)
+        state_before = Observation.preprocess_obs(state_before)
 
 
 # register_inputs() permet d'ajouter des données pour permettre a l'agent de s'entrainer. Une fois l'entrainement
@@ -189,10 +211,13 @@ if __name__ == "__main__":
         type=str,
         choices=["play", "watch"],
         help="""
-        The mode of the python script. The play mode is for generating data to train the agent.
-        The watch mode is for watching the agent play
+        The mode of the python script.
+        The play mode is for generating data to train the agent.
+        The watch mode is for watching the agent play.
         """,
     )
+    parser.add_argument('--debug', action='store_true', help="Will create images of the observation state in the debug folder.")
+
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
@@ -203,9 +228,13 @@ if __name__ == "__main__":
     ale.loadROM(Pong)
 
     print(f"Starting the script in {args.mode} mode ...")
+
+    IS_DEBUG = args.debug
+    if IS_DEBUG:
+        os.makedirs(DEBUG_PATH, exist_ok=True)
+
     if args.mode == "watch":
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(current_dir, 'models', 'pong.h5')
-        play_model(model_path)
+        play_model(MODEL_PATH)
     else:
+        os.makedirs(DATA_PATH, exist_ok=True)
         register_inputs()
